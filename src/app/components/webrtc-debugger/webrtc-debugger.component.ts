@@ -121,7 +121,7 @@ import { WebRTCLoopbackService } from '../../services/webrtc-loopback.service';
       font-family: system-ui, -apple-system, sans-serif;
       padding: 1.5rem;
       max-width: 600px;
-      margin: 1rem auto;
+      margin: 0 auto;
       background: #1a1a2e;
       border-radius: 12px;
       color: #e0e0e0;

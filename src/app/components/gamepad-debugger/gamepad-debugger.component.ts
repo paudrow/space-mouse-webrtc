@@ -3,10 +3,10 @@ import { DecimalPipe } from '@angular/common';
 import { SpaceMouseService } from '../../services/spacemouse.service';
 
 @Component({
-  selector: 'app-spacemouse-debugger',
+  selector: 'app-gamepad-debugger',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="spacemouse-debugger">
+    <div class="gamepad-debugger">
       <h2>SpaceMouse Debugger</h2>
 
       @if (isConnected()) {
@@ -143,7 +143,7 @@ import { SpaceMouseService } from '../../services/spacemouse.service';
     </div>
   `,
   styles: `
-    .spacemouse-debugger {
+    .gamepad-debugger {
       font-family: system-ui, -apple-system, sans-serif;
       padding: 1.5rem;
       max-width: 600px;
@@ -417,7 +417,7 @@ import { SpaceMouseService } from '../../services/spacemouse.service';
   `,
   imports: [DecimalPipe],
 })
-export class SpaceMouseDebuggerComponent implements OnDestroy {
+export class GamepadDebuggerComponent implements OnDestroy {
   private readonly spaceMouseService = inject(SpaceMouseService);
   private readonly elementRef = inject(ElementRef);
 
@@ -436,19 +436,7 @@ export class SpaceMouseDebuggerComponent implements OnDestroy {
   });
 
   private onPointerLockChange = () => {
-    const isLocked = document.pointerLockElement !== null;
-    this.isPointerLocked.set(isLocked);
-
-    // Add/remove scroll prevention when pointer lock changes
-    if (isLocked) {
-      window.addEventListener('wheel', this.preventScroll, { passive: false });
-    } else {
-      window.removeEventListener('wheel', this.preventScroll);
-    }
-  };
-
-  private preventScroll = (event: WheelEvent) => {
-    event.preventDefault();
+    this.isPointerLocked.set(document.pointerLockElement !== null);
   };
 
   constructor() {
@@ -457,7 +445,6 @@ export class SpaceMouseDebuggerComponent implements OnDestroy {
 
   ngOnDestroy(): void {
     document.removeEventListener('pointerlockchange', this.onPointerLockChange);
-    window.removeEventListener('wheel', this.preventScroll);
     if (document.pointerLockElement) {
       document.exitPointerLock();
     }

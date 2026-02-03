@@ -34,4 +34,17 @@
     width: 100%;
     max-width: 650px;
   }
+
+  @media (min-width: 1200px) {
+    .debugger-container {
+      flex-direction: row;
+      max-width: 1300px;
+      align-items: flex-start;
+    }
+
+    .debugger-container > * {
+      flex: 1;
+      min-width: 0;
+    }
+  }
 </style>
