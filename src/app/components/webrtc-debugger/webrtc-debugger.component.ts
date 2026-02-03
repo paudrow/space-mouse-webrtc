@@ -38,6 +38,29 @@ import { WebRTCLoopbackService } from '../../services/webrtc-loopback.service';
           </div>
         </div>
 
+        <div class="latency-stats">
+          <div class="latency-item">
+            <span class="latency-label">Latency:</span>
+            <span class="latency-value" [class.good]="latencyMs() !== null && latencyMs()! < 5" [class.ok]="latencyMs() !== null && latencyMs()! >= 5 && latencyMs()! < 20" [class.bad]="latencyMs() !== null && latencyMs()! >= 20">
+              @if (latencyMs() !== null) {
+                {{ latencyMs() | number: '1.2-2' }} ms
+              } @else {
+                --
+              }
+            </span>
+          </div>
+          <div class="latency-item">
+            <span class="latency-label">Avg Latency:</span>
+            <span class="latency-value">
+              @if (avgLatencyMs() !== null) {
+                {{ avgLatencyMs() | number: '1.2-2' }} ms
+              } @else {
+                --
+              }
+            </span>
+          </div>
+        </div>
+
         @if (receivedPose()) {
           <section class="received-data">
             <h3>Received Pose Data</h3>
@@ -219,10 +242,47 @@ import { WebRTCLoopbackService } from '../../services/webrtc-loopback.service';
     .stats {
       display: flex;
       gap: 2rem;
+      margin-bottom: 0.5rem;
+      padding: 0.75rem;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+    }
+
+    .latency-stats {
+      display: flex;
+      gap: 2rem;
       margin-bottom: 1rem;
       padding: 0.75rem;
       background: rgba(255, 255, 255, 0.05);
       border-radius: 8px;
+    }
+
+    .latency-item {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .latency-label {
+      color: #888;
+    }
+
+    .latency-value {
+      font-family: 'SF Mono', 'Consolas', monospace;
+      font-weight: 600;
+      color: #aaa;
+    }
+
+    .latency-value.good {
+      color: #4caf50;
+    }
+
+    .latency-value.ok {
+      color: #ffc107;
+    }
+
+    .latency-value.bad {
+      color: #f44336;
     }
 
     .stat {
@@ -304,6 +364,8 @@ export class WebRTCDebuggerComponent {
   protected readonly receivedPose = this.webrtcService.receivedPose;
   protected readonly packetsSent = this.webrtcService.packetsSent;
   protected readonly packetsReceived = this.webrtcService.packetsReceived;
+  protected readonly latencyMs = this.webrtcService.latencyMs;
+  protected readonly avgLatencyMs = this.webrtcService.avgLatencyMs;
 
   protected readonly connectionStateLabel = computed(() => {
     switch (this.connectionState()) {

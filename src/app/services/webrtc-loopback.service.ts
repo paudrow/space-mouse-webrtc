@@ -1,7 +1,7 @@
 import { Injectable, OnDestroy, inject, NgZone } from '@angular/core';
 import { signal } from '@angular/core';
 import { GamepadService, SpaceMouseAxes } from './gamepad.service';
-import { packPose, unpackPose } from '../utils/pose-serializer';
+import { packPose, unpackPoseWithTimestamp } from '../utils/pose-serializer';
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'failed';
 
@@ -27,6 +27,12 @@ export class WebRTCLoopbackService implements OnDestroy {
   // Stats
   readonly packetsSent = signal(0);
   readonly packetsReceived = signal(0);
+
+  // Latency tracking
+  readonly latencyMs = signal<number | null>(null);
+  readonly avgLatencyMs = signal<number | null>(null);
+  private latencyHistory: number[] = [];
+  private readonly LATENCY_HISTORY_SIZE = 30; // Average over last 30 samples
 
   // Peer connections
   private pc1: RTCPeerConnection | null = null; // Sender
@@ -163,6 +169,9 @@ export class WebRTCLoopbackService implements OnDestroy {
     this.packetsSent.set(0);
     this.packetsReceived.set(0);
     this.receivedPose.set(null);
+    this.latencyMs.set(null);
+    this.avgLatencyMs.set(null);
+    this.latencyHistory = [];
   }
 
   /**
@@ -222,14 +231,28 @@ export class WebRTCLoopbackService implements OnDestroy {
 
   private handleReceivedData(data: ArrayBuffer): void {
     try {
-      const pose = unpackPose(data);
-      this.ngZone.run(() => {
-        this.receivedPose.set(pose);
-        this.packetsReceived.update((n) => n + 1);
-      });
+      const receiveTime = performance.now();
+      const { timestamp: sendTime, axes } = unpackPoseWithTimestamp(data);
 
-      // Log for debugging (can be removed later)
-      console.log('Received pose:', pose);
+      // Calculate latency
+      const latency = receiveTime - sendTime;
+
+      // Update latency history for averaging
+      this.latencyHistory.push(latency);
+      if (this.latencyHistory.length > this.LATENCY_HISTORY_SIZE) {
+        this.latencyHistory.shift();
+      }
+
+      // Calculate average latency
+      const avgLatency =
+        this.latencyHistory.reduce((sum, l) => sum + l, 0) / this.latencyHistory.length;
+
+      this.ngZone.run(() => {
+        this.receivedPose.set(axes);
+        this.packetsReceived.update((n) => n + 1);
+        this.latencyMs.set(latency);
+        this.avgLatencyMs.set(avgLatency);
+      });
     } catch (error) {
       console.error('Failed to unpack pose:', error);
     }
