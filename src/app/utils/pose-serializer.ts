@@ -24,12 +24,18 @@ export interface TimestampedPose {
 
 /**
  * Pack a SpaceMouseAxes object into a compact ArrayBuffer with timestamp.
+ * 
  * @param axes The 6 DOF axes to serialize
  * @param timestamp Optional timestamp (defaults to performance.now())
+ * @param reuseBuffer Optional pre-allocated buffer to reduce GC pressure at 60fps
  * @returns ArrayBuffer containing the packed data (32 bytes)
  */
-export function packPose(axes: SpaceMouseAxes, timestamp?: number): ArrayBuffer {
-  const buffer = new ArrayBuffer(POSE_PACKET_SIZE);
+export function packPose(
+  axes: SpaceMouseAxes,
+  timestamp?: number,
+  reuseBuffer?: ArrayBuffer
+): ArrayBuffer {
+  const buffer = reuseBuffer ?? new ArrayBuffer(POSE_PACKET_SIZE);
   const dataView = new DataView(buffer);
 
   // Write timestamp as Float64 (8 bytes)

@@ -1,6 +1,25 @@
 import { Injectable, NgZone, signal, inject, OnDestroy } from '@angular/core';
 import { applyDeadzone, hasSignificantChange } from '../utils/deadzone';
 
+/** Axis indices for SpaceMouse (standard mapping) */
+const AXIS_INDEX = {
+  TX: 0, // X translation (left/right)
+  TY: 1, // Y translation (up/down)
+  TZ: 2, // Z translation (forward/back)
+  RX: 3, // Pitch (tilt forward/back)
+  RY: 4, // Yaw (twist left/right)
+  RZ: 5, // Roll (tilt left/right)
+} as const;
+
+/**
+ * Identifies if a gamepad is a SpaceMouse device.
+ * 3Dconnexion devices typically include "SpaceMouse" or "3Dconnexion" in the ID string.
+ */
+function isSpaceMouse(gamepad: Gamepad): boolean {
+  const id = gamepad.id.toLowerCase();
+  return id.includes('spacemouse') || id.includes('3dconnexion');
+}
+
 /** 6 DOF axes for SpaceMouse - Translation and Rotation */
 export interface SpaceMouseAxes {
   // Translation (linear movement)
@@ -111,7 +130,8 @@ export class SpaceMouseService implements OnDestroy {
 
   private updateGamepadState(): void {
     const gamepads = navigator.getGamepads();
-    const gamepad = gamepads.find((gp) => gp !== null) ?? null;
+    // Filter specifically for SpaceMouse to avoid capturing Xbox/PlayStation controllers
+    const gamepad = gamepads.find((gp) => gp !== null && isSpaceMouse(gp)) ?? null;
 
     if (!gamepad) {
       return;
@@ -139,14 +159,14 @@ export class SpaceMouseService implements OnDestroy {
   }
 
   private normalizeAxes(rawAxes: readonly number[]): SpaceMouseAxes {
-    // SpaceMouse typically reports 6 axes: TX, TY, TZ, RX, RY, RZ
+    // Use named constants instead of magic numbers for cross-platform clarity
     return {
-      tx: applyDeadzone(rawAxes[0] ?? 0, this.deadzoneThreshold),
-      ty: applyDeadzone(rawAxes[1] ?? 0, this.deadzoneThreshold),
-      tz: applyDeadzone(rawAxes[2] ?? 0, this.deadzoneThreshold),
-      rx: applyDeadzone(rawAxes[3] ?? 0, this.deadzoneThreshold),
-      ry: applyDeadzone(rawAxes[4] ?? 0, this.deadzoneThreshold),
-      rz: applyDeadzone(rawAxes[5] ?? 0, this.deadzoneThreshold),
+      tx: applyDeadzone(rawAxes[AXIS_INDEX.TX] ?? 0, this.deadzoneThreshold),
+      ty: applyDeadzone(rawAxes[AXIS_INDEX.TY] ?? 0, this.deadzoneThreshold),
+      tz: applyDeadzone(rawAxes[AXIS_INDEX.TZ] ?? 0, this.deadzoneThreshold),
+      rx: applyDeadzone(rawAxes[AXIS_INDEX.RX] ?? 0, this.deadzoneThreshold),
+      ry: applyDeadzone(rawAxes[AXIS_INDEX.RY] ?? 0, this.deadzoneThreshold),
+      rz: applyDeadzone(rawAxes[AXIS_INDEX.RZ] ?? 0, this.deadzoneThreshold),
     };
   }
 

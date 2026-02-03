@@ -1,7 +1,7 @@
 import { Injectable, OnDestroy, inject, NgZone } from '@angular/core';
 import { signal } from '@angular/core';
 import { SpaceMouseService, SpaceMouseAxes } from './spacemouse.service';
-import { packPose, unpackPoseWithTimestamp } from '../utils/pose-serializer';
+import { packPose, unpackPoseWithTimestamp, POSE_PACKET_SIZE } from '../utils/pose-serializer';
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'failed';
 
@@ -41,8 +41,11 @@ export class WebRTCLoopbackService implements OnDestroy {
   // Data channel
   private dataChannel: RTCDataChannel | null = null;
 
-  // Gamepad subscription cleanup
-  private gamepadEffectCleanup: (() => void) | null = null;
+  // Send loop RAF ID for explicit cleanup
+  private sendLoopRAF: number | null = null;
+
+  // Reusable buffer to reduce GC pressure at 60fps
+  private readonly sendBuffer = new ArrayBuffer(POSE_PACKET_SIZE);
 
   ngOnDestroy(): void {
     this.disconnect();
@@ -172,7 +175,8 @@ export class WebRTCLoopbackService implements OnDestroy {
       return;
     }
 
-    const buffer = packPose(axes);
+    // Reuse buffer to avoid GC pressure
+    const buffer = packPose(axes, undefined, this.sendBuffer);
     this.dataChannel.send(buffer);
     this.packetsSent.update((n) => n + 1);
   }
@@ -189,12 +193,12 @@ export class WebRTCLoopbackService implements OnDestroy {
   }
 
   private startSendingPose(): void {
-    // Use an effect-like pattern to send gamepad state changes
-    // We'll poll the gamepad signal and send when connected
+    // Explicitly track RAF ID for deterministic cleanup
     let lastTimestamp = 0;
 
     const sendLoop = () => {
       if (this.connectionState() !== 'connected') {
+        this.sendLoopRAF = null;
         return;
       }
 
@@ -204,18 +208,18 @@ export class WebRTCLoopbackService implements OnDestroy {
         lastTimestamp = state.timestamp;
       }
 
-      requestAnimationFrame(sendLoop);
+      this.sendLoopRAF = requestAnimationFrame(sendLoop);
     };
 
     this.ngZone.runOutsideAngular(() => {
-      requestAnimationFrame(sendLoop);
+      this.sendLoopRAF = requestAnimationFrame(sendLoop);
     });
   }
 
   private stopSendingPose(): void {
-    if (this.gamepadEffectCleanup) {
-      this.gamepadEffectCleanup();
-      this.gamepadEffectCleanup = null;
+    if (this.sendLoopRAF !== null) {
+      cancelAnimationFrame(this.sendLoopRAF);
+      this.sendLoopRAF = null;
     }
   }
 
