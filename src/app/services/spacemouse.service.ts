@@ -1,24 +1,6 @@
 import { Injectable, NgZone, signal, inject, OnDestroy } from '@angular/core';
 import { applyDeadzone, hasSignificantChange } from '../utils/deadzone';
-
-/** Axis indices for SpaceMouse (standard mapping) */
-const AXIS_INDEX = {
-  TX: 0, // X translation (left/right)
-  TY: 1, // Y translation (up/down)
-  TZ: 2, // Z translation (forward/back)
-  RX: 3, // Pitch (tilt forward/back)
-  RY: 4, // Yaw (twist left/right)
-  RZ: 5, // Roll (tilt left/right)
-} as const;
-
-/**
- * Identifies if a gamepad is a SpaceMouse device.
- * 3Dconnexion devices typically include "SpaceMouse" or "3Dconnexion" in the ID string.
- */
-function isSpaceMouse(gamepad: Gamepad): boolean {
-  const id = gamepad.id.toLowerCase();
-  return id.includes('spacemouse') || id.includes('3dconnexion');
-}
+import { AXIS_INDEX, isSpaceMouse } from '../config/spacemouse.config';
 
 /** 6 DOF axes for SpaceMouse - Translation and Rotation */
 export interface SpaceMouseAxes {
@@ -44,13 +26,16 @@ export interface SpaceMouseState {
   timestamp: number;
 }
 
-const DEFAULT_STATE: SpaceMouseState = {
-  connected: false,
-  id: '',
-  axes: { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0 },
-  buttons: {},
-  timestamp: 0,
-};
+/** Creates a fresh default state to prevent accidental mutation */
+function createDefaultState(): SpaceMouseState {
+  return {
+    connected: false,
+    id: '',
+    axes: { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0 },
+    buttons: {},
+    timestamp: 0,
+  };
+}
 
 @Injectable({
   providedIn: 'root',
@@ -59,7 +44,7 @@ export class SpaceMouseService implements OnDestroy {
   private readonly ngZone = inject(NgZone);
 
   /** The SpaceMouse state exposed as a signal */
-  readonly state = signal<SpaceMouseState>(DEFAULT_STATE);
+  readonly state = signal<SpaceMouseState>(createDefaultState());
 
   /** Deadzone threshold for analog sticks */
   readonly deadzoneThreshold = 0.1;
@@ -97,7 +82,7 @@ export class SpaceMouseService implements OnDestroy {
 
     if (!hasConnectedGamepad) {
       this.stopPolling();
-      this.state.set(DEFAULT_STATE);
+      this.state.set(createDefaultState());
     }
   };
 
@@ -133,7 +118,16 @@ export class SpaceMouseService implements OnDestroy {
     // Filter specifically for SpaceMouse to avoid capturing Xbox/PlayStation controllers
     const gamepad = gamepads.find((gp) => gp !== null && isSpaceMouse(gp)) ?? null;
 
+    // If we were connected but now can't find the device, disconnect
     if (!gamepad) {
+      if (this.state().connected) {
+        this.ngZone.run(() => {
+          this.state.set(createDefaultState());
+        });
+      }
+      // Stop polling - no need to burn CPU at 60fps checking for a device.
+      // The 'gamepadconnected' event will restart the loop when plugged back in.
+      this.stopPolling();
       return;
     }
 

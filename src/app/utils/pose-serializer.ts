@@ -29,12 +29,20 @@ export interface TimestampedPose {
  * @param timestamp Optional timestamp (defaults to performance.now())
  * @param reuseBuffer Optional pre-allocated buffer to reduce GC pressure at 60fps
  * @returns ArrayBuffer containing the packed data (32 bytes)
+ * @throws Error if reuseBuffer is provided but too small
  */
 export function packPose(
   axes: SpaceMouseAxes,
   timestamp?: number,
   reuseBuffer?: ArrayBuffer
 ): ArrayBuffer {
+  // Validate reuseBuffer size at boundary to catch misuse early
+  if (reuseBuffer && reuseBuffer.byteLength < POSE_PACKET_SIZE) {
+    throw new Error(
+      `reuseBuffer too small: expected ${POSE_PACKET_SIZE} bytes, got ${reuseBuffer.byteLength}`
+    );
+  }
+
   const buffer = reuseBuffer ?? new ArrayBuffer(POSE_PACKET_SIZE);
   const dataView = new DataView(buffer);
 

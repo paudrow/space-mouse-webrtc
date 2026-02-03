@@ -27,6 +27,7 @@ export class WebRTCLoopbackService implements OnDestroy {
   // Stats
   readonly packetsSent = signal(0);
   readonly packetsReceived = signal(0);
+  readonly packetsInvalid = signal(0);
 
   // Latency tracking
   readonly latencyMs = signal<number | null>(null);
@@ -161,6 +162,7 @@ export class WebRTCLoopbackService implements OnDestroy {
     this.connectionState.set('disconnected');
     this.packetsSent.set(0);
     this.packetsReceived.set(0);
+    this.packetsInvalid.set(0);
     this.receivedPose.set(null);
     this.latencyMs.set(null);
     this.avgLatencyMs.set(null);
@@ -171,7 +173,8 @@ export class WebRTCLoopbackService implements OnDestroy {
    * Manually send a pose (for testing)
    */
   sendPose(axes: SpaceMouseAxes): void {
-    if (this.dataChannel?.readyState !== 'open') {
+    // Strict null check to prevent race condition with disconnect()
+    if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
       return;
     }
 
@@ -248,7 +251,8 @@ export class WebRTCLoopbackService implements OnDestroy {
         this.avgLatencyMs.set(avgLatency);
       });
     } catch {
-      // Invalid packet - silently ignore
+      // Track invalid packets for debugging (e.g., version mismatches)
+      this.packetsInvalid.update((n) => n + 1);
     }
   }
 }

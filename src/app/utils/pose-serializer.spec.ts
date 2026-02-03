@@ -47,6 +47,19 @@ describe('Pose Serializer', () => {
       const view = new DataView(buffer);
       expect(view.getFloat64(0, true)).toBeCloseTo(timestamp, 3);
     });
+
+    it('should throw error if reuseBuffer is too small', () => {
+      const smallBuffer = new ArrayBuffer(16);
+      expect(() => packPose(samplePose, undefined, smallBuffer)).toThrow(
+        'reuseBuffer too small: expected 32 bytes, got 16'
+      );
+    });
+
+    it('should use reuseBuffer when provided with correct size', () => {
+      const reuseBuffer = new ArrayBuffer(POSE_PACKET_SIZE);
+      const result = packPose(samplePose, 1000, reuseBuffer);
+      expect(result).toBe(reuseBuffer);
+    });
   });
 
   describe('unpackPose', () => {

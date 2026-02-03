@@ -3,6 +3,24 @@ import { WebRTCLoopbackService } from './webrtc-loopback.service';
 import { SpaceMouseService } from './spacemouse.service';
 import { signal } from '@angular/core';
 
+/**
+ * Predicate-based wait helper to avoid flaky setTimeout tests.
+ * Polls until the predicate returns true or timeout is reached.
+ */
+async function waitFor(
+  predicate: () => boolean,
+  timeout = 2000,
+  interval = 10
+): Promise<void> {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > timeout) {
+      throw new Error(`waitFor timed out after ${timeout}ms`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, interval));
+  }
+}
+
 describe('WebRTCLoopbackService', () => {
   let service: WebRTCLoopbackService;
 
@@ -73,14 +91,14 @@ describe('WebRTCLoopbackService', () => {
   (hasWebRTC ? describe : describe.skip)('WebRTC connection tests', () => {
     it('should connect and reach connected state', async () => {
       await service.connect();
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await waitFor(() => service.connectionState() === 'connected');
 
       expect(service.connectionState()).toBe('connected');
     });
 
     it('should disconnect properly', async () => {
       await service.connect();
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await waitFor(() => service.connectionState() === 'connected');
 
       service.disconnect();
 
@@ -91,7 +109,7 @@ describe('WebRTCLoopbackService', () => {
 
     it('should send and receive pose data through loopback', async () => {
       await service.connect();
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await waitFor(() => service.connectionState() === 'connected');
 
       const testPose = {
         tx: 0.5,
@@ -103,7 +121,7 @@ describe('WebRTCLoopbackService', () => {
       };
 
       service.sendPose(testPose);
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await waitFor(() => service.packetsReceived() === 1);
 
       expect(service.packetsSent()).toBe(1);
       expect(service.packetsReceived()).toBe(1);

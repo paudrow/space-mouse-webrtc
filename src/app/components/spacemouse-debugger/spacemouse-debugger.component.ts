@@ -1,5 +1,7 @@
-import { Component, inject, computed, ChangeDetectionStrategy, ElementRef, signal, OnDestroy } from '@angular/core';
+import { Component, inject, computed, ChangeDetectionStrategy, ElementRef, signal, DestroyRef } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { fromEvent } from 'rxjs';
 import { SpaceMouseService } from '../../services/spacemouse.service';
 
 @Component({
@@ -417,9 +419,10 @@ import { SpaceMouseService } from '../../services/spacemouse.service';
   `,
   imports: [DecimalPipe],
 })
-export class SpaceMouseDebuggerComponent implements OnDestroy {
+export class SpaceMouseDebuggerComponent {
   private readonly spaceMouseService = inject(SpaceMouseService);
   private readonly elementRef = inject(ElementRef);
+  private readonly destroyRef = inject(DestroyRef);
 
   protected readonly state = this.spaceMouseService.state;
   protected readonly isPointerLocked = signal(false);
@@ -435,31 +438,53 @@ export class SpaceMouseDebuggerComponent implements OnDestroy {
       .map(([index]) => parseInt(index, 10));
   });
 
-  private onPointerLockChange = () => {
-    const isLocked = document.pointerLockElement !== null;
-    this.isPointerLocked.set(isLocked);
-
-    // Add/remove scroll prevention when pointer lock changes
-    if (isLocked) {
-      window.addEventListener('wheel', this.preventScroll, { passive: false });
-    } else {
-      window.removeEventListener('wheel', this.preventScroll);
-    }
-  };
+  // Track wheel listener for manual cleanup when pointer lock is released
+  private wheelListenerActive = false;
 
   private preventScroll = (event: WheelEvent) => {
     event.preventDefault();
   };
 
   constructor() {
-    document.addEventListener('pointerlockchange', this.onPointerLockChange);
+    // Use fromEvent with takeUntilDestroyed for automatic cleanup
+    fromEvent(document, 'pointerlockchange')
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.onPointerLockChange());
+
+    // Ensure cleanup on destroy
+    this.destroyRef.onDestroy(() => {
+      this.removeWheelListener();
+      if (document.pointerLockElement) {
+        document.exitPointerLock();
+      }
+    });
   }
 
-  ngOnDestroy(): void {
-    document.removeEventListener('pointerlockchange', this.onPointerLockChange);
-    window.removeEventListener('wheel', this.preventScroll);
-    if (document.pointerLockElement) {
-      document.exitPointerLock();
+  private onPointerLockChange(): void {
+    const isLocked = document.pointerLockElement !== null;
+    this.isPointerLocked.set(isLocked);
+
+    // Add/remove scroll prevention when pointer lock changes
+    // passive: false is required to allow preventDefault() on wheel events
+    if (isLocked) {
+      this.addWheelListener();
+    } else {
+      this.removeWheelListener();
+    }
+  }
+
+  private addWheelListener(): void {
+    if (!this.wheelListenerActive) {
+      // passive: false is required to call preventDefault() and block scrolling
+      window.addEventListener('wheel', this.preventScroll, { passive: false });
+      this.wheelListenerActive = true;
+    }
+  }
+
+  private removeWheelListener(): void {
+    if (this.wheelListenerActive) {
+      window.removeEventListener('wheel', this.preventScroll);
+      this.wheelListenerActive = false;
     }
   }
 
