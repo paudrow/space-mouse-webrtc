@@ -1,9 +1,11 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, ChangeDetectionStrategy } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
+import { GamepadDebuggerComponent } from './components/gamepad-debugger/gamepad-debugger.component';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [RouterOutlet, GamepadDebuggerComponent],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
