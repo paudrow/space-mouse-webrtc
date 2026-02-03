@@ -1,12 +1,12 @@
 import { Component, inject, computed, ChangeDetectionStrategy, ElementRef, signal, OnDestroy } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
-import { GamepadService } from '../../services/gamepad.service';
+import { SpaceMouseService } from '../../services/spacemouse.service';
 
 @Component({
-  selector: 'app-gamepad-debugger',
+  selector: 'app-spacemouse-debugger',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="gamepad-debugger">
+    <div class="spacemouse-debugger">
       <h2>SpaceMouse Debugger</h2>
 
       @if (isConnected()) {
@@ -143,7 +143,7 @@ import { GamepadService } from '../../services/gamepad.service';
     </div>
   `,
   styles: `
-    .gamepad-debugger {
+    .spacemouse-debugger {
       font-family: system-ui, -apple-system, sans-serif;
       padding: 1.5rem;
       max-width: 600px;
@@ -417,11 +417,11 @@ import { GamepadService } from '../../services/gamepad.service';
   `,
   imports: [DecimalPipe],
 })
-export class GamepadDebuggerComponent implements OnDestroy {
-  private readonly gamepadService = inject(GamepadService);
+export class SpaceMouseDebuggerComponent implements OnDestroy {
+  private readonly spaceMouseService = inject(SpaceMouseService);
   private readonly elementRef = inject(ElementRef);
 
-  protected readonly state = this.gamepadService.state;
+  protected readonly state = this.spaceMouseService.state;
   protected readonly isPointerLocked = signal(false);
 
   protected readonly isConnected = computed(() => this.state().connected);

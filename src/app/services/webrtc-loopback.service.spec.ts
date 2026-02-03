@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { WebRTCLoopbackService } from './webrtc-loopback.service';
-import { GamepadService } from './gamepad.service';
+import { SpaceMouseService } from './spacemouse.service';
 import { signal } from '@angular/core';
 
 describe('WebRTCLoopbackService', () => {
@@ -23,7 +23,7 @@ describe('WebRTCLoopbackService', () => {
       providers: [
         WebRTCLoopbackService,
         {
-          provide: GamepadService,
+          provide: SpaceMouseService,
           useValue: {
             state: mockGamepadState,
           },

@@ -1,6 +1,6 @@
 import { Injectable, OnDestroy, inject, NgZone } from '@angular/core';
 import { signal } from '@angular/core';
-import { GamepadService, SpaceMouseAxes } from './gamepad.service';
+import { SpaceMouseService, SpaceMouseAxes } from './spacemouse.service';
 import { packPose, unpackPoseWithTimestamp } from '../utils/pose-serializer';
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'failed';
@@ -16,7 +16,7 @@ export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'fai
 })
 export class WebRTCLoopbackService implements OnDestroy {
   private readonly ngZone = inject(NgZone);
-  private readonly gamepadService = inject(GamepadService);
+  private readonly spaceMouseService = inject(SpaceMouseService);
 
   // Connection state
   readonly connectionState = signal<ConnectionState>('disconnected');
@@ -53,7 +53,6 @@ export class WebRTCLoopbackService implements OnDestroy {
    */
   async connect(): Promise<void> {
     if (this.connectionState() !== 'disconnected') {
-      console.warn('Already connecting or connected');
       return;
     }
 
@@ -79,12 +78,10 @@ export class WebRTCLoopbackService implements OnDestroy {
 
       // Monitor connection state
       this.pc1.onconnectionstatechange = () => {
-        console.log('PC1 connection state:', this.pc1?.connectionState);
         this.updateConnectionState();
       };
 
       this.pc2.onconnectionstatechange = () => {
-        console.log('PC2 connection state:', this.pc2?.connectionState);
         this.updateConnectionState();
       };
 
@@ -97,28 +94,24 @@ export class WebRTCLoopbackService implements OnDestroy {
       this.dataChannel.binaryType = 'arraybuffer';
 
       this.dataChannel.onopen = () => {
-        console.log('Data channel opened');
         this.ngZone.run(() => {
           this.connectionState.set('connected');
         });
-        // Start sending gamepad data
         this.startSendingPose();
       };
 
       this.dataChannel.onclose = () => {
-        console.log('Data channel closed');
         this.ngZone.run(() => {
           this.connectionState.set('disconnected');
         });
       };
 
-      this.dataChannel.onerror = (error) => {
-        console.error('Data channel error:', error);
+      this.dataChannel.onerror = () => {
+        // Error handling could be added here if needed
       };
 
       // Handle incoming data channel on pc2 (receiver)
       this.pc2.ondatachannel = (event) => {
-        console.log('Received data channel:', event.channel.label);
         const receiveChannel = event.channel;
         receiveChannel.binaryType = 'arraybuffer';
 
@@ -135,10 +128,7 @@ export class WebRTCLoopbackService implements OnDestroy {
       const answer = await this.pc2.createAnswer();
       await this.pc2.setLocalDescription(answer);
       await this.pc1.setRemoteDescription(answer);
-
-      console.log('WebRTC loopback connection established');
-    } catch (error) {
-      console.error('Failed to establish WebRTC connection:', error);
+    } catch {
       this.connectionState.set('failed');
       this.disconnect();
     }
@@ -208,7 +198,7 @@ export class WebRTCLoopbackService implements OnDestroy {
         return;
       }
 
-      const state = this.gamepadService.state();
+      const state = this.spaceMouseService.state();
       if (state.connected && state.timestamp !== lastTimestamp) {
         this.sendPose(state.axes);
         lastTimestamp = state.timestamp;
@@ -253,8 +243,8 @@ export class WebRTCLoopbackService implements OnDestroy {
         this.latencyMs.set(latency);
         this.avgLatencyMs.set(avgLatency);
       });
-    } catch (error) {
-      console.error('Failed to unpack pose:', error);
+    } catch {
+      // Invalid packet - silently ignore
     }
   }
 }

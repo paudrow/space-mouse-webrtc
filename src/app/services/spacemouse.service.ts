@@ -13,19 +13,19 @@ export interface SpaceMouseAxes {
   rz: number; // Roll (tilt left/right)
 }
 
-export interface GamepadButtons {
+export interface SpaceMouseButtons {
   [index: number]: boolean;
 }
 
-export interface NormalizedGamepadState {
+export interface SpaceMouseState {
   connected: boolean;
   id: string;
   axes: SpaceMouseAxes;
-  buttons: GamepadButtons;
+  buttons: SpaceMouseButtons;
   timestamp: number;
 }
 
-const DEFAULT_STATE: NormalizedGamepadState = {
+const DEFAULT_STATE: SpaceMouseState = {
   connected: false,
   id: '',
   axes: { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0 },
@@ -36,11 +36,11 @@ const DEFAULT_STATE: NormalizedGamepadState = {
 @Injectable({
   providedIn: 'root',
 })
-export class GamepadService implements OnDestroy {
+export class SpaceMouseService implements OnDestroy {
   private readonly ngZone = inject(NgZone);
 
-  /** The normalized gamepad state exposed as a signal */
-  readonly state = signal<NormalizedGamepadState>(DEFAULT_STATE);
+  /** The SpaceMouse state exposed as a signal */
+  readonly state = signal<SpaceMouseState>(DEFAULT_STATE);
 
   /** Deadzone threshold for analog sticks */
   readonly deadzoneThreshold = 0.1;
@@ -67,14 +67,11 @@ export class GamepadService implements OnDestroy {
     window.removeEventListener('gamepaddisconnected', this.onGamepadDisconnected);
   }
 
-  private onGamepadConnected = (event: GamepadEvent): void => {
-    console.log('Gamepad connected:', event.gamepad.id);
+  private onGamepadConnected = (): void => {
     this.startPolling();
   };
 
-  private onGamepadDisconnected = (event: GamepadEvent): void => {
-    console.log('Gamepad disconnected:', event.gamepad.id);
-
+  private onGamepadDisconnected = (): void => {
     // Check if any gamepads are still connected
     const gamepads = navigator.getGamepads();
     const hasConnectedGamepad = gamepads.some((gp) => gp !== null);
@@ -153,8 +150,8 @@ export class GamepadService implements OnDestroy {
     };
   }
 
-  private normalizeButtons(rawButtons: readonly GamepadButton[]): GamepadButtons {
-    const buttons: GamepadButtons = {};
+  private normalizeButtons(rawButtons: readonly GamepadButton[]): SpaceMouseButtons {
+    const buttons: SpaceMouseButtons = {};
     rawButtons.forEach((button, index) => {
       buttons[index] = button.pressed;
     });
@@ -162,9 +159,9 @@ export class GamepadService implements OnDestroy {
   }
 
   private hasStateChanged(
-    current: NormalizedGamepadState,
+    current: SpaceMouseState,
     newAxes: SpaceMouseAxes,
-    newButtons: GamepadButtons,
+    newButtons: SpaceMouseButtons,
     connected: boolean
   ): boolean {
     // Connection state changed

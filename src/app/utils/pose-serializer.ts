@@ -1,4 +1,4 @@
-import { SpaceMouseAxes } from '../services/gamepad.service';
+import { SpaceMouseAxes } from '../services/spacemouse.service';
 
 /**
  * Binary serialization for 6 DOF SpaceMouse pose data with timestamp.

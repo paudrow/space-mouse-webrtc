@@ -14,10 +14,10 @@ describe('App', () => {
     expect(app).toBeTruthy();
   });
 
-  it('should render the gamepad debugger component', async () => {
+  it('should render the SpaceMouse debugger component', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('app-gamepad-debugger')).toBeTruthy();
+    expect(compiled.querySelector('app-spacemouse-debugger')).toBeTruthy();
   });
 });
