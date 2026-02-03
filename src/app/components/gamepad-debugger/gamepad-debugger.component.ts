@@ -1,4 +1,4 @@
-import { Component, inject, computed, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, computed, ChangeDetectionStrategy, ElementRef, signal, OnDestroy } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { SpaceMouseService } from '../../services/gamepad.service';
 
@@ -21,6 +21,20 @@ import { SpaceMouseService } from '../../services/gamepad.service';
         <div class="status connected">
           <span class="status-indicator"></span>
           Connected: {{ gamepadId() }}
+        </div>
+
+        <div class="pointer-lock-section">
+          @if (isPointerLocked()) {
+            <div class="pointer-lock-active">
+              <span class="lock-icon">🔒</span>
+              Mouse captured - Press <kbd>Esc</kbd> to release
+            </div>
+          } @else {
+            <button class="capture-btn" (click)="requestPointerLock()">
+              🎯 Capture Mouse
+            </button>
+            <span class="capture-hint">Click to lock cursor while using SpaceMouse</span>
+          }
         </div>
 
         <section class="axes-section">
@@ -159,6 +173,56 @@ import { SpaceMouseService } from '../../services/gamepad.service';
       background: #1a1a2e;
       border-radius: 12px;
       color: #e0e0e0;
+    }
+
+    .pointer-lock-section {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+      padding: 0.75rem;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+    }
+
+    .pointer-lock-active {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: #4caf50;
+      font-weight: 500;
+    }
+
+    .pointer-lock-active kbd {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-family: monospace;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .lock-icon {
+      font-size: 1.2rem;
+    }
+
+    .capture-btn {
+      padding: 0.5rem 1rem;
+      background: rgba(0, 188, 212, 0.2);
+      border: 1px solid rgba(0, 188, 212, 0.4);
+      border-radius: 6px;
+      color: #00bcd4;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background-color 0.2s;
+    }
+
+    .capture-btn:hover {
+      background: rgba(0, 188, 212, 0.3);
+    }
+
+    .capture-hint {
+      color: #888;
+      font-size: 0.85rem;
     }
 
     h2 {
@@ -435,12 +499,14 @@ import { SpaceMouseService } from '../../services/gamepad.service';
   `,
   imports: [DecimalPipe],
 })
-export class GamepadDebuggerComponent {
+export class GamepadDebuggerComponent implements OnDestroy {
   private readonly spaceMouseService = inject(SpaceMouseService);
+  private readonly elementRef = inject(ElementRef);
 
   protected readonly state = this.spaceMouseService.state;
   protected readonly isSupported = this.spaceMouseService.isSupported;
   protected readonly errorMessage = this.spaceMouseService.error;
+  protected readonly isPointerLocked = signal(false);
 
   protected readonly isConnected = computed(() => this.state().connected);
   protected readonly gamepadId = computed(() => this.state().id);
@@ -453,11 +519,34 @@ export class GamepadDebuggerComponent {
       .map(([index]) => parseInt(index, 10));
   });
 
+  private onPointerLockChange = () => {
+    this.isPointerLocked.set(document.pointerLockElement !== null);
+  };
+
+  constructor() {
+    document.addEventListener('pointerlockchange', this.onPointerLockChange);
+  }
+
+  ngOnDestroy(): void {
+    document.removeEventListener('pointerlockchange', this.onPointerLockChange);
+    if (document.pointerLockElement) {
+      document.exitPointerLock();
+    }
+  }
+
   async connect(): Promise<void> {
     await this.spaceMouseService.requestDevice();
   }
 
   disconnect(): void {
     this.spaceMouseService.disconnect();
+    if (document.pointerLockElement) {
+      document.exitPointerLock();
+    }
+  }
+
+  requestPointerLock(): void {
+    const element = this.elementRef.nativeElement as HTMLElement;
+    element.requestPointerLock();
   }
 }
