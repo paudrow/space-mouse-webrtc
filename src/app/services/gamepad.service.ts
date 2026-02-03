@@ -13,19 +13,19 @@ export interface SpaceMouseAxes {
   rz: number; // Roll (tilt left/right)
 }
 
-export interface GamepadButtons {
+export interface SpaceMouseButtons {
   [index: number]: boolean;
 }
 
-export interface NormalizedGamepadState {
+export interface SpaceMouseState {
   connected: boolean;
   id: string;
   axes: SpaceMouseAxes;
-  buttons: GamepadButtons;
+  buttons: SpaceMouseButtons;
   timestamp: number;
 }
 
-const DEFAULT_STATE: NormalizedGamepadState = {
+const DEFAULT_STATE: SpaceMouseState = {
   connected: false,
   id: '',
   axes: { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0 },
@@ -33,145 +33,255 @@ const DEFAULT_STATE: NormalizedGamepadState = {
   timestamp: 0,
 };
 
+// 3Dconnexion vendor ID
+const VENDOR_ID_3DCONNEXION = 0x256f;
+
+// Known SpaceMouse product IDs
+const SPACEMOUSE_PRODUCT_IDS = [
+  0xc62e, // SpaceMouse Compact
+  0xc62f, // SpaceMouse Module
+  0xc631, // SpaceMouse Pro Wireless (cabled)
+  0xc632, // SpaceMouse Pro Wireless (wireless)
+  0xc633, // SpaceMouse Enterprise
+  0xc635, // SpaceMouse Compact (new)
+  0xc652, // Universal Receiver
+];
+
 @Injectable({
   providedIn: 'root',
 })
-export class GamepadService implements OnDestroy {
+export class SpaceMouseService implements OnDestroy {
   private readonly ngZone = inject(NgZone);
 
-  /** The normalized gamepad state exposed as a signal */
-  readonly state = signal<NormalizedGamepadState>(DEFAULT_STATE);
+  /** The SpaceMouse state exposed as a signal */
+  readonly state = signal<SpaceMouseState>(DEFAULT_STATE);
 
-  /** Deadzone threshold for analog sticks */
+  /** Whether WebHID is supported in this browser */
+  readonly isSupported = signal<boolean>(this.checkWebHIDSupport());
+
+  /** Error message if connection fails */
+  readonly error = signal<string | null>(null);
+
+  /** Deadzone threshold for axes */
   readonly deadzoneThreshold = 0.1;
 
-  private animationFrameId: number | null = null;
-  private isPolling = false;
+  /** The maximum raw value from SpaceMouse (±350 typically) */
+  private readonly maxRawValue = 350;
+
+  private device: HIDDevice | null = null;
+  private onDisconnectHandler = this.onDeviceDisconnected.bind(this);
 
   constructor() {
     this.setupEventListeners();
+    this.tryReconnectPreviousDevice();
   }
 
   ngOnDestroy(): void {
-    this.stopPolling();
     this.removeEventListeners();
+    this.disconnect();
+  }
+
+  private checkWebHIDSupport(): boolean {
+    return 'hid' in navigator;
   }
 
   private setupEventListeners(): void {
-    window.addEventListener('gamepadconnected', this.onGamepadConnected);
-    window.addEventListener('gamepaddisconnected', this.onGamepadDisconnected);
+    if (!this.isSupported()) return;
+    navigator.hid.addEventListener('disconnect', this.onDisconnectHandler);
   }
 
   private removeEventListeners(): void {
-    window.removeEventListener('gamepadconnected', this.onGamepadConnected);
-    window.removeEventListener('gamepaddisconnected', this.onGamepadDisconnected);
+    if (!this.isSupported()) return;
+    navigator.hid.removeEventListener('disconnect', this.onDisconnectHandler);
   }
 
-  private onGamepadConnected = (event: GamepadEvent): void => {
-    console.log('Gamepad connected:', event.gamepad.id);
-    this.startPolling();
-  };
-
-  private onGamepadDisconnected = (event: GamepadEvent): void => {
-    console.log('Gamepad disconnected:', event.gamepad.id);
-
-    // Check if any gamepads are still connected
-    const gamepads = navigator.getGamepads();
-    const hasConnectedGamepad = gamepads.some((gp) => gp !== null);
-
-    if (!hasConnectedGamepad) {
-      this.stopPolling();
-      this.state.set(DEFAULT_STATE);
+  /**
+   * Request access to a SpaceMouse device.
+   * Must be called from a user gesture (button click, etc.)
+   */
+  async requestDevice(): Promise<boolean> {
+    if (!this.isSupported()) {
+      console.error('WebHID is not supported in this browser');
+      return false;
     }
-  };
 
-  private startPolling(): void {
-    if (this.isPolling) return;
+    // Clear any previous error
+    this.error.set(null);
 
-    this.isPolling = true;
+    try {
+      // Build filters for known SpaceMouse devices
+      const filters: HIDDeviceFilter[] = SPACEMOUSE_PRODUCT_IDS.map((productId) => ({
+        vendorId: VENDOR_ID_3DCONNEXION,
+        productId,
+      }));
 
-    // Run the polling loop outside Angular zone to prevent
-    // triggering change detection 60 times per second
-    this.ngZone.runOutsideAngular(() => {
-      this.poll();
-    });
+      const [device] = await navigator.hid.requestDevice({ filters });
+
+      if (device) {
+        await this.connectToDevice(device);
+        return true;
+      }
+    } catch (error) {
+      console.error('Failed to request HID device:', error);
+      if (error instanceof Error) {
+        this.error.set(error.message);
+      }
+    }
+
+    return false;
   }
 
-  private stopPolling(): void {
-    this.isPolling = false;
-    if (this.animationFrameId !== null) {
-      cancelAnimationFrame(this.animationFrameId);
-      this.animationFrameId = null;
+  /**
+   * Try to reconnect to a previously authorized device
+   */
+  private async tryReconnectPreviousDevice(): Promise<void> {
+    if (!this.isSupported()) return;
+
+    try {
+      const devices = await navigator.hid.getDevices();
+      const spaceMouse = devices.find(
+        (d) =>
+          d.vendorId === VENDOR_ID_3DCONNEXION &&
+          SPACEMOUSE_PRODUCT_IDS.includes(d.productId)
+      );
+
+      if (spaceMouse) {
+        await this.connectToDevice(spaceMouse);
+      }
+    } catch (error) {
+      console.error('Failed to reconnect to previous device:', error);
     }
   }
 
-  private poll = (): void => {
-    if (!this.isPolling) return;
+  private async connectToDevice(device: HIDDevice): Promise<void> {
+    try {
+      console.log('Attempting to open device:', device.productName, 'opened:', device.opened);
+      
+      if (!device.opened) {
+        await device.open();
+        console.log('Device opened successfully');
+      }
 
-    this.updateGamepadState();
-    this.animationFrameId = requestAnimationFrame(this.poll);
-  };
+      this.device = device;
+      console.log(`Connected to ${device.productName}`);
+      console.log('Device collections:', device.collections);
 
-  private updateGamepadState(): void {
-    const gamepads = navigator.getGamepads();
-    const gamepad = gamepads.find((gp) => gp !== null) ?? null;
+      // Listen for input reports
+      device.addEventListener('inputreport', this.onInputReport);
+      console.log('Input report listener added');
 
-    if (!gamepad) {
-      return;
-    }
-
-    const newAxes = this.normalizeAxes(gamepad.axes);
-    const newButtons = this.normalizeButtons(gamepad.buttons);
-
-    const currentState = this.state();
-
-    // Only update if there are significant changes
-    if (this.hasStateChanged(currentState, newAxes, newButtons, gamepad.connected)) {
-      // Run inside Angular zone when updating the signal
-      // to ensure any dependent components get notified
+      // Update state to connected
       this.ngZone.run(() => {
-        this.state.set({
-          connected: gamepad.connected,
-          id: gamepad.id,
-          axes: newAxes,
-          buttons: newButtons,
-          timestamp: gamepad.timestamp,
+        this.state.update((s) => ({
+          ...s,
+          connected: true,
+          id: device.productName || `SpaceMouse (${device.productId.toString(16)})`,
+        }));
+        console.log('State updated to connected');
+      });
+    } catch (error) {
+      console.error('Failed to open device:', error);
+      if (error instanceof DOMException && error.name === 'NotAllowedError') {
+        this.ngZone.run(() => {
+          this.error.set(
+            'Cannot open device. Please quit the 3Dconnexion driver first (check your menu bar or Activity Monitor for "3DconnexionHelper").'
+          );
         });
+      } else if (error instanceof Error) {
+        this.ngZone.run(() => {
+          this.error.set(error.message);
+        });
+      }
+    }
+  }
+
+  disconnect(): void {
+    if (this.device) {
+      this.device.removeEventListener('inputreport', this.onInputReport);
+      this.device.close();
+      this.device = null;
+    }
+    this.state.set(DEFAULT_STATE);
+  }
+
+  private onDeviceDisconnected(event: HIDConnectionEvent): void {
+    if (event.device === this.device) {
+      console.log('SpaceMouse disconnected');
+      this.device = null;
+      this.ngZone.run(() => {
+        this.state.set(DEFAULT_STATE);
       });
     }
   }
 
-  private normalizeAxes(rawAxes: readonly number[]): SpaceMouseAxes {
-    // SpaceMouse typically reports 6 axes: TX, TY, TZ, RX, RY, RZ
-    return {
-      tx: applyDeadzone(rawAxes[0] ?? 0, this.deadzoneThreshold),
-      ty: applyDeadzone(rawAxes[1] ?? 0, this.deadzoneThreshold),
-      tz: applyDeadzone(rawAxes[2] ?? 0, this.deadzoneThreshold),
-      rx: applyDeadzone(rawAxes[3] ?? 0, this.deadzoneThreshold),
-      ry: applyDeadzone(rawAxes[4] ?? 0, this.deadzoneThreshold),
-      rz: applyDeadzone(rawAxes[5] ?? 0, this.deadzoneThreshold),
-    };
+  private onInputReport = (event: HIDInputReportEvent): void => {
+    const { data, reportId } = event;
+
+    console.log('Input report received:', reportId, 'bytes:', data.byteLength);
+
+    // SpaceMouse sends different report types:
+    // Report 1: Translation data (TX, TY, TZ)
+    // Report 2: Rotation data (RX, RY, RZ)
+    // Report 3: Button data
+
+    const currentState = this.state();
+    let newAxes = { ...currentState.axes };
+    let newButtons = { ...currentState.buttons };
+
+    if (reportId === 1 && data.byteLength >= 6) {
+      // Translation data: 3 x 16-bit signed integers (little-endian)
+      const tx = this.normalizeAxis(data.getInt16(0, true));
+      const ty = this.normalizeAxis(data.getInt16(2, true));
+      const tz = this.normalizeAxis(data.getInt16(4, true));
+      newAxes = { ...newAxes, tx, ty, tz };
+    } else if (reportId === 2 && data.byteLength >= 6) {
+      // Rotation data: 3 x 16-bit signed integers (little-endian)
+      const rx = this.normalizeAxis(data.getInt16(0, true));
+      const ry = this.normalizeAxis(data.getInt16(2, true));
+      const rz = this.normalizeAxis(data.getInt16(4, true));
+      newAxes = { ...newAxes, rx, ry, rz };
+    } else if (reportId === 3 && data.byteLength >= 2) {
+      // Button data: bitmask
+      const buttonMask = data.getUint16(0, true);
+      newButtons = this.parseButtons(buttonMask);
+    }
+
+    // Only update if there are significant changes
+    if (this.hasStateChanged(currentState, newAxes, newButtons)) {
+      this.ngZone.run(() => {
+        this.state.set({
+          connected: true,
+          id: currentState.id,
+          axes: newAxes,
+          buttons: newButtons,
+          timestamp: performance.now(),
+        });
+      });
+    }
+  };
+
+  private normalizeAxis(rawValue: number): number {
+    // Normalize to -1 to 1 range and apply deadzone
+    const normalized = Math.max(-1, Math.min(1, rawValue / this.maxRawValue));
+    return applyDeadzone(normalized, this.deadzoneThreshold);
   }
 
-  private normalizeButtons(rawButtons: readonly GamepadButton[]): GamepadButtons {
-    const buttons: GamepadButtons = {};
-    rawButtons.forEach((button, index) => {
-      buttons[index] = button.pressed;
-    });
+  private parseButtons(mask: number): SpaceMouseButtons {
+    const buttons: SpaceMouseButtons = {};
+    // SpaceMouse typically has up to 16 buttons encoded as a bitmask
+    for (let i = 0; i < 16; i++) {
+      if (mask & (1 << i)) {
+        buttons[i] = true;
+      }
+    }
     return buttons;
   }
 
   private hasStateChanged(
-    current: NormalizedGamepadState,
+    current: SpaceMouseState,
     newAxes: SpaceMouseAxes,
-    newButtons: GamepadButtons,
-    connected: boolean
+    newButtons: SpaceMouseButtons
   ): boolean {
-    // Connection state changed
-    if (current.connected !== connected) {
-      return true;
-    }
-
     // Check all 6 axes for significant changes
     if (
       hasSignificantChange(current.axes.tx, newAxes.tx) ||

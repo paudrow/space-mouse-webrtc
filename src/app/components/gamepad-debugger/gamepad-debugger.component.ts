@@ -1,6 +1,6 @@
 import { Component, inject, computed, ChangeDetectionStrategy } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
-import { GamepadService } from '../../services/gamepad.service';
+import { SpaceMouseService } from '../../services/gamepad.service';
 
 @Component({
   selector: 'app-gamepad-debugger',
@@ -9,7 +9,15 @@ import { GamepadService } from '../../services/gamepad.service';
     <div class="gamepad-debugger">
       <h2>SpaceMouse Debugger</h2>
 
-      @if (isConnected()) {
+      @if (!isSupported()) {
+        <div class="status error">
+          <span class="status-indicator"></span>
+          WebHID is not supported in this browser
+        </div>
+        <p class="instructions">
+          Please use a Chromium-based browser (Chrome, Edge, Opera) to connect your SpaceMouse.
+        </p>
+      } @else if (isConnected()) {
         <div class="status connected">
           <span class="status-indicator"></span>
           Connected: {{ gamepadId() }}
@@ -117,14 +125,28 @@ import { GamepadService } from '../../services/gamepad.service';
             }
           </div>
         </section>
+
+        <button class="disconnect-btn" (click)="disconnect()">
+          Disconnect
+        </button>
       } @else {
         <div class="status disconnected">
           <span class="status-indicator"></span>
           No SpaceMouse connected
         </div>
+
+        @if (errorMessage()) {
+          <div class="error-message">
+            <strong>Error:</strong> {{ errorMessage() }}
+          </div>
+        }
+
         <p class="instructions">
-          Connect your SpaceMouse and press any button to activate it.
+          Click the button below to connect your SpaceMouse via WebHID.
         </p>
+        <button class="connect-btn" (click)="connect()">
+          Connect SpaceMouse
+        </button>
       }
     </div>
   `,
@@ -192,6 +214,26 @@ import { GamepadService } from '../../services/gamepad.service';
 
     .status.disconnected .status-indicator {
       background: #9e9e9e;
+    }
+
+    .status.error {
+      background: rgba(244, 67, 54, 0.15);
+      border: 1px solid rgba(244, 67, 54, 0.3);
+    }
+
+    .status.error .status-indicator {
+      background: #f44336;
+    }
+
+    .error-message {
+      background: rgba(244, 67, 54, 0.15);
+      border: 1px solid rgba(244, 67, 54, 0.3);
+      color: #ff8a80;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+      line-height: 1.4;
     }
 
     .instructions {
@@ -350,13 +392,55 @@ import { GamepadService } from '../../services/gamepad.service';
         transform: scale(1);
       }
     }
+
+    .connect-btn,
+    .disconnect-btn {
+      display: block;
+      width: 100%;
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.2s, transform 0.1s;
+      margin-top: 1rem;
+    }
+
+    .connect-btn {
+      background: #00bcd4;
+      color: #000;
+    }
+
+    .connect-btn:hover {
+      background: #00acc1;
+      transform: translateY(-1px);
+    }
+
+    .connect-btn:active {
+      transform: translateY(0);
+    }
+
+    .disconnect-btn {
+      background: rgba(255, 255, 255, 0.1);
+      color: #aaa;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .disconnect-btn:hover {
+      background: rgba(244, 67, 54, 0.2);
+      border-color: rgba(244, 67, 54, 0.4);
+      color: #f44336;
+    }
   `,
   imports: [DecimalPipe],
 })
 export class GamepadDebuggerComponent {
-  private readonly gamepadService = inject(GamepadService);
+  private readonly spaceMouseService = inject(SpaceMouseService);
 
-  protected readonly state = this.gamepadService.state;
+  protected readonly state = this.spaceMouseService.state;
+  protected readonly isSupported = this.spaceMouseService.isSupported;
+  protected readonly errorMessage = this.spaceMouseService.error;
 
   protected readonly isConnected = computed(() => this.state().connected);
   protected readonly gamepadId = computed(() => this.state().id);
@@ -368,4 +452,12 @@ export class GamepadDebuggerComponent {
       .filter(([, pressed]) => pressed)
       .map(([index]) => parseInt(index, 10));
   });
+
+  async connect(): Promise<void> {
+    await this.spaceMouseService.requestDevice();
+  }
+
+  disconnect(): void {
+    this.spaceMouseService.disconnect();
+  }
 }
